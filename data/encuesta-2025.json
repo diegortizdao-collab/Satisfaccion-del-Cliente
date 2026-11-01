@@ -2,7 +2,7 @@
  "encuestas": [
   {
    "anio": 2025,
-   "titulo": "Encuesta de satisfacción 2025",
+   "titulo": "Encuesta 2025",
    "enviadas": 20,
    "meta": 87,
    "w1": [
@@ -18,7 +18,7 @@
     1,
     1
    ],
-   "nota": "Origen: planilla «Encuestas de satisfacción del cliente 2025.xlsx» (Drive). Las encuestas enviadas (20) se tomaron del criterio de las revisiones anteriores: confirmarlas.",
+   "nota": "Realizada a principios de 2026; entra en la RxD 2026. Origen: planilla «Encuestas de satisfacción del cliente 2025.xlsx» (Drive). Las encuestas enviadas (20) se tomaron del criterio de las revisiones anteriores: confirmarlas.",
    "respuestas": [
     {
      "fecha": "31/01/2026",

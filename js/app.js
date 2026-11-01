@@ -146,15 +146,17 @@ function fechaTxt(v) {
 }
 const normCli = s => nz(s).replace(/\s+/g, ' ').trim();
 function buildRows(U) {
-  const out = [], bad = [];
+  const out = [], bad = [], repetidas = [], vistos = new Set();
   U.data.forEach((r, ix) => {
     const g = i => (i >= 0 ? r[i] : '');
     const e1 = D1.map((_, k) => toNum(g(U.map['a' + k]), 5)), e2 = D2.map((_, k) => toNum(g(U.map['b' + k]), 3));
     const cli = (g(U.map.cliente) || '').trim();
     if (!cli || e1.includes(null) || e2.includes(null)) { bad.push(ix + 2); return; }
+    if (vistos.has(normCli(cli))) { repetidas.push(cli); return; }   // mismo cliente dos veces en el archivo: se usa la primera
+    vistos.add(normCli(cli));
     out.push({ fecha: fechaTxt(g(U.map.fecha)), cliente: cli, e1, e2, comentario: U.map.com.map(i => (r[i] || '').trim()).filter(Boolean).join(' · ') });
   });
-  return { out, bad };
+  return { out, bad, repetidas };
 }
 function openUpload(file) {
   const rd = new FileReader();
@@ -169,15 +171,23 @@ function vUp() {
   const U = S.up, H = U.head;
   const opt = sel => '<option value="-1">— sin columna —</option>' + H.map((h, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(h.length > 46 ? h.slice(0, 44) + '…' : h)}</option>`).join('');
   const sel = (key, label) => `<label class="mrow"><span>${label}</span><select data-m="${key}">${opt(U.map[key])}</select></label>`;
-  const { out, bad } = buildRows(U);
-  const ya = new Set(rows().map(r => normCli(r.cliente)));
-  const dup = out.filter(o => ya.has(normCli(o.cliente))).length;
+  const { out, bad, repetidas } = buildRows(U);
+  const ex = new Map(rows().map(r => [normCli(r.cliente), r]));
+  const dups = out.filter(o => ex.has(normCli(o.cliente)));
+  const same = a => JSON.stringify(a.e1) === JSON.stringify(o_(a).e1) && JSON.stringify(a.e2) === JSON.stringify(o_(a).e2);
+  function o_(a) { return ex.get(normCli(a.cliente)); }
+  const iguales = dups.filter(same), distintas = dups.filter(d => !same(d));
+  S.up.distintas = distintas.map(d => normCli(d.cliente));
+  if (!S.up.pisar) S.up.pisar = new Set();
+  const nt = (a, b) => `${a.join('-')} / ${b.join('-')}`;
+  const conflictos = U.modo === 'add' && distintas.length ? `<div class="note" style="border-left-color:var(--warn)"><b>${distintas.length} cliente(s) ya respondieron con notas distintas.</b> Por defecto se mantiene la respuesta cargada; elegí si querés reemplazarla por la del archivo.
+    <div class="tw" style="margin-top:8px"><table style="min-width:0"><thead><tr><th>Cliente</th><th>Cargada (1.ª / 2.ª)</th><th>En el archivo</th><th>Qué hacer</th></tr></thead><tbody>${distintas.map(d => { const k = normCli(d.cliente), cur = ex.get(k); return `<tr><td><b>${esc(d.cliente)}</b></td><td class="num">${nt(cur.e1, cur.e2)}</td><td class="num">${nt(d.e1, d.e2)}</td><td><select data-pisar="${esc(k)}"><option value="0" ${S.up.pisar.has(k) ? '' : 'selected'}>Mantener la cargada</option><option value="1" ${S.up.pisar.has(k) ? 'selected' : ''}>Reemplazar por la del archivo</option></select></td></tr>`; }).join('')}</tbody></table></div></div>` : '';
   return `<div class="ov"><div class="pn"><h3>Cargar encuestas desde CSV</h3><div class="sub">${esc(U.name)} · ${U.data.length} filas · revisá que cada dato apunte a la columna correcta · se carga en la encuesta ${S.anio}</div>
   <div class="mgrid"><div><b class="mh">Datos</b>${sel('fecha', 'Fecha')}${sel('cliente', 'Cliente')}${sel('contacto', 'Contacto (no se guarda)')}
   <label class="mrow"><span>Comentarios</span><span class="det">${U.map.com.length ? U.map.com.map(i => esc(H[i])).join(' · ') : 'ninguna columna detectada'}</span></label></div>
   <div><b class="mh">1.ª etapa · hacia Silver</b>${D1.map((n, k) => sel('a' + k, n)).join('')}</div>
   <div><b class="mh">2.ª etapa · frente a la competencia</b>${D2.map((n, k) => sel('b' + k, n)).join('')}</div></div>
-  <div class="note" style="margin:12px 0 8px">Se pueden importar <b>${out.length}</b> de ${U.data.length} respuestas${bad.length ? `; las filas ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '…' : ''} quedan afuera por falta de cliente o de alguna nota` : ''}. ${dup ? `<b>${dup}</b> ya existen (mismo cliente) y se omiten al agregar.` : ''}</div>
+  <div class="note" style="margin:12px 0 8px">Se pueden importar <b>${out.length}</b> de ${U.data.length} respuestas${repetidas.length ? `; <b>${repetidas.length}</b> repetida(s) dentro del archivo (${esc([...new Set(repetidas)].join(', '))}): se usa la primera de cada cliente` : ''}${bad.length ? `; las filas ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '…' : ''} quedan afuera por falta de cliente o de alguna nota` : ''}. ${iguales.length ? `<b>${iguales.length}</b> ya estaban cargadas con las mismas notas y se ignoran.` : ''}${U.modo === 'add' && distintas.length ? ` <b>${distintas.length}</b> ya estaban con notas distintas.` : ''}</div>${conflictos}
   <div class="toolbar"><label><input type="radio" name="modo" value="add" ${U.modo === 'add' ? 'checked' : ''}> Agregar a las ya cargadas</label><label><input type="radio" name="modo" value="rep" ${U.modo === 'rep' ? 'checked' : ''}> Reemplazar todas</label><span class="spacer"></span><button id="upCancel">Cancelar</button><button class="pri" id="upOk" ${out.length ? '' : 'disabled'}>Importar ${out.length}</button></div></div></div>`;
 }
 
@@ -196,12 +206,12 @@ function vPublicar(c) {
   const e = enc();
   const revs = S.E.rxd.revisiones;
   if (!revs.length) return '';
-  const def = (revs.find(r => r.estado === 'borrador') || revs[0]).anio;
+  const def = (revs.find(r => r.anio === S.anio + 1) || revs.find(r => r.estado === 'borrador') || revs[0]).anio;
   const sel = S.pubAnio && revs.some(r => r.anio === S.pubAnio) ? S.pubAnio : def;
   const prev = rxdValor('satisfaccion', sel), prevR = rxdValor('resp_encuesta', sel);
   const listo = c.n > 0 && e.enviadas > 0;
   return `<div class="card" style="margin-top:12px"><h3>Publicar en la revisión por la dirección</h3>
-  <div class="sub">Escribe el índice de la 1.ª etapa y el nivel de respuesta en los indicadores de la RxD del año que elijas. Nunca lo hace sola.</div>
+  <div class="sub">La encuesta ${S.anio} mide el período ${S.anio}, se realiza en ${S.anio + 1} y entra en la RxD ${S.anio + 1}. Escribe el índice de la 1.ª etapa y el nivel de respuesta en esa revisión. Nunca lo hace sola.</div>
   <div class="toolbar"><label for="pubAnio" class="det">Revisión</label><select id="pubAnio">${revs.map(r => `<option value="${r.anio}" ${r.anio === sel ? 'selected' : ''}>RxD ${r.anio} (${esc(r.estado)})</option>`).join('')}</select>
   <button class="pri" id="btnPub" ${listo ? '' : 'disabled'}>Publicar ${c.n ? f1(c.g1) + '%' : ''}</button></div>
   <p class="det">Hoy en la RxD ${sel}: satisfacción <b>${prev ? f2(prev.valor) + '%' : 'sin dato'}</b>, nivel de respuesta <b>${prevR ? prevR.valor + '%' : 'sin dato'}</b>. ${prev && c.n ? 'Si publicás, se reemplazan (queda registrado en el historial de la RxD).' : ''}${listo ? '' : ' Para publicar hacen falta respuestas cargadas y la cantidad de encuestas enviadas.'}</p></div>`;
@@ -247,7 +257,7 @@ function vVoc(c) {
   const opts = (arr, sel) => arr.map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('');
   const prc = { Alta: 'ko', Media: 'wa', Baja: 'ok' };
   const revs = S.E.rxd.revisiones;
-  const defR = (revs.find(r => r.estado === 'borrador') || revs[0] || {}).anio;
+  const defR = (revs.find(r => r.anio === S.anio + 1) || revs.find(r => r.estado === 'borrador') || revs[0] || {}).anio;
   return `<div class="note">La <b>voz del cliente</b> (ISO 9001, 9.1.2) junta lo que dicen los puntajes y los comentarios, lo ordena por tema, decide qué atender y lo lleva a la dirección (9.3.2). Los comentarios se clasifican a mano: con pocas respuestas la lectura humana rinde más que una clasificación automática.</div>
   <div class="grid g2" style="margin-bottom:12px">
    <div class="card"><h3>Prioridades de mejora</h3><div class="sub">Alta: el tema está bajo la meta · Media: 3 o más clientes con señal negativa</div>
@@ -270,11 +280,9 @@ function vVoc(c) {
    <p class="toolbar" style="margin-top:8px"><button id="btnSug" ${pr.some(x => x.pr === 'Alta') ? '' : 'disabled'}>Proponer acción para el tema con prioridad alta</button><span class="det">Crea un borrador con el hallazgo calculado; la acción y el responsable los definís vos. «Llevar a la RxD» exige responsable.</span></p></div>`;
 }
 function histRows() {
-  const years = new Set([...S.list.map(e => e.anio), ...S.rxd.valores.filter(v => v.clave === 'satisfaccion').map(v => v.anio)]);
-  return [...years].sort().map(a => {
-    const e = S.list.find(x => x.anio === a), v = rxdValor('satisfaccion', a), r = rxdValor('resp_encuesta', a);
-    return { a, e, v, r };
-  });
+  // la encuesta del año N entra en la RxD N+1: lo registrado en la RxD de un año corresponde a la encuesta del año anterior
+  const years = new Set([...S.list.map(e => e.anio), ...S.rxd.valores.filter(v => v.clave === 'satisfaccion').map(v => v.anio - 1)]);
+  return [...years].sort().map(a => ({ a, e: S.list.find(x => x.anio === a), v: rxdValor('satisfaccion', a + 1), r: rxdValor('resp_encuesta', a + 1) }));
 }
 function vHis() {
   const all = histRows();
@@ -283,11 +291,11 @@ function vHis() {
   const min = Math.floor(Math.min(80, ...vals) / 5) * 5, max = 100, H = 170;
   const h = v => Math.max(4, (v - min) / (max - min) * H);
   const meta = enc().meta;
-  return `<div class="note">El Apéndice C informa el índice de la 1.ª etapa. «En la RxD» es lo que hoy figura en la revisión por la dirección; «Encuesta» es lo que calcula este módulo con los pesos guardados. Si difieren, decidí cuál queda y publicá.</div>
+  return `<div class="note">El Apéndice C informa el índice de la 1.ª etapa. «En la RxD» es lo que hoy figura en la revisión por la dirección del año siguiente a la encuesta; «Calculado acá» es lo que calcula este módulo con los pesos guardados. Si difieren, decidí cuál queda y publicá.</div>
   <div class="grid g2"><div class="card"><h3>Índice de satisfacción por año</h3><div class="sub">1.ª etapa ponderada, eje desde ${min}%</div>
   <div class="hist">${all.map(x => { const v = val(x); return v == null ? '' : `<div class="b ${x.a === S.anio ? 'cur' : ''}"><span class="num">${f1(v)}</span><i style="height:${h(v)}px"></i><small>${x.a}</small></div>`; }).join('')}<div class="mt" style="bottom:${h(meta)}px"><em>meta ${meta}%</em></div></div><div style="height:22px"></div></div>
-  <div class="card"><h3>Serie</h3><div class="sub">Encuesta, RxD y nivel de respuesta</div><div class="tw"><table style="min-width:0"><thead><tr><th>Año</th><th class="cellv">Encuesta</th><th class="cellv">En la RxD</th><th class="cellv">Respuesta</th></tr></thead><tbody>
-  ${all.map(x => { const dif = x.e && x.e.indice1 != null && x.v && Math.abs(x.e.indice1 - x.v.valor) >= 0.01; return `<tr><td>${x.a}</td><td class="cellv num">${x.e && x.e.indice1 != null ? f2(x.e.indice1) + '%' : '—'}</td><td class="cellv num">${x.v ? f2(x.v.valor) + '%' : '—'}${dif ? ' <span class="pill warn">difiere</span>' : ''}</td><td class="cellv">${x.e && x.e.respuesta != null ? f1(x.e.respuesta).replace(',0', '') + '%' : x.r ? x.r.valor + '%' : '—'}</td></tr>`; }).join('')}</tbody></table></div>
+  <div class="card"><h3>Serie</h3><div class="sub">Encuesta, RxD y nivel de respuesta</div><div class="tw"><table style="min-width:0"><thead><tr><th>Encuesta</th><th class="cellv">Calculado acá</th><th class="cellv">En la RxD</th><th class="cellv">Respuesta</th></tr></thead><tbody>
+  ${all.map(x => { const dif = x.e && x.e.indice1 != null && x.v && Math.abs(x.e.indice1 - x.v.valor) >= 0.01; return `<tr><td>${x.a} <span class="det">→ RxD ${x.a + 1}</span></td><td class="cellv num">${x.e && x.e.indice1 != null ? f2(x.e.indice1) + '%' : '—'}</td><td class="cellv num">${x.v ? f2(x.v.valor) + '%' : '—'}${dif ? ' <span class="pill warn">difiere</span>' : ''}</td><td class="cellv">${x.e && x.e.respuesta != null ? f1(x.e.respuesta).replace(',0', '') + '%' : x.r ? x.r.valor + '%' : '—'}</td></tr>`; }).join('')}</tbody></table></div>
   <p class="det">Los archivos de 2009 a 2020 siguen en Drive y se pueden importar con el mismo formato cuando se necesiten.</p></div></div>`;
 }
 function vPon(c) {
@@ -323,7 +331,7 @@ async function putCfg(body) {
   draw();
 }
 function vImportar() {
-  return `<div class="note">Todavía no hay ninguna encuesta cargada. Podés empezar con la <b>encuesta 2025</b> (la planilla «Encuestas de satisfacción del cliente 2025», 10 respuestas) o crear una nueva y cargarle un CSV.</div>
+  return `<div class="note">Todavía no hay ninguna encuesta cargada. Podés empezar con la <b>encuesta 2025</b> (la planilla «Encuestas de satisfacción del cliente 2025», 10 respuestas, hecha a principios de 2026 para la RxD 2026) o crear una nueva y cargarle un CSV.</div>
   <p class="toolbar"><button class="pri" id="btnImp">Cargar la encuesta 2025 desde la planilla</button><button id="btnNueva2">Crear una encuesta vacía</button></p>`;
 }
 function draw() {
@@ -350,7 +358,7 @@ function draw() {
   q('[data-af]').forEach(e => (e.onchange = async () => { const ok = await guardar(() => api('/api/acciones/' + e.dataset.id, { method: 'PUT', body: { [e.dataset.af]: e.value } })); if (ok) await recargar(); }));
   q('[data-dela]').forEach(e => (e.onclick = async () => { if (!confirm('¿Eliminar esta acción?')) return; await guardar(() => api('/api/acciones/' + e.dataset.dela, { method: 'DELETE' })); await recargar(); }));
   q('[data-rxd]').forEach(e => (e.onclick = async () => {
-    const revs = S.E.rxd.revisiones, ra = (revs.find(x => x.estado === 'borrador') || revs[0]).anio;
+    const revs = S.E.rxd.revisiones, ra = (revs.find(x => x.anio === S.anio + 1) || revs.find(x => x.estado === 'borrador') || revs[0]).anio;
     if (!confirm(`Se crea la decisión propuesta en la RxD ${ra}. ¿Continuar?`)) return;
     const res = await guardar(() => api(`/api/acciones/${e.dataset.rxd}/rxd`, { method: 'POST', body: { rxd_anio: ra } }));
     if (res) { toast(`Quedó en la RxD ${ra} como ${res.rxd_codigo}.`); await recargar(); }
@@ -379,16 +387,17 @@ function draw() {
   };
   if (S.up) {
     q('[data-m]').forEach(e => (e.onchange = () => { S.up.map[e.dataset.m] = parseInt(e.value); draw(); }));
-    q('input[name=modo]').forEach(e => (e.onchange = () => { S.up.modo = e.value; }));
+    q('input[name=modo]').forEach(e => (e.onchange = () => { S.up.modo = e.value; draw(); }));
+    q('[data-pisar]').forEach(e => (e.onchange = () => { if (e.value === '1') S.up.pisar.add(e.dataset.pisar); else S.up.pisar.delete(e.dataset.pisar); }));
     $('upCancel').onclick = () => { S.up = null; draw(); };
     $('upOk').onclick = async () => {
       const { out } = buildRows(S.up);
       if (S.up.modo === 'rep' && !confirm('Se reemplazan todas las respuestas de esta encuesta por las del archivo. ¿Continuar?')) return;
-      const r = await guardar(() => api(`/api/encuesta/${S.anio}/respuestas`, { method: 'POST', body: { filas: out, modo: S.up.modo } }));
+      const r = await guardar(() => api(`/api/encuesta/${S.anio}/respuestas`, { method: 'POST', body: { filas: out, modo: S.up.modo, pisar: [...(S.up.pisar || [])] } }));
       if (!r) return;
       S.E = r.encuesta; S.up = null;
       const l = await api('/api/encuestas'); S.list = l.encuestas; S.rxd = l.rxd;
-      toast(`Se importaron ${r.insertadas} respuestas${r.omitidas.length ? `; ${r.omitidas.length} ya estaban (${r.omitidas.slice(0, 3).join(', ')}${r.omitidas.length > 3 ? '…' : ''})` : ''}${r.con_comentario ? `; ${r.con_comentario} con comentario para clasificar en Voz del cliente` : ''}.`);
+      toast(`Se importaron ${r.insertadas} respuestas nuevas${r.reemplazadas ? `; ${r.reemplazadas} reemplazadas` : ''}${r.omitidas.length ? `; ${r.omitidas.length} sin cambios (ya estaban: ${r.omitidas.slice(0, 3).join(', ')}${r.omitidas.length > 3 ? '…' : ''})` : ''}${r.con_comentario ? `; ${r.con_comentario} con comentario para clasificar en Voz del cliente` : ''}.`);
       if (r.con_comentario) S.tab = 'voc';
       draw();
     };
@@ -402,11 +411,11 @@ async function importar() {
   } catch (e) { toast(e.message, 1); }
 }
 async function nueva() {
-  const a = parseInt(prompt('Año de la encuesta nueva (por ejemplo 2026):', String(new Date().getFullYear())));
+  const a = parseInt(prompt('Año del período que mide la encuesta nueva. Se realiza al año siguiente y entra en esa RxD (la encuesta 2026 se hace en 2027 y va a la RxD 2027):', String(new Date().getFullYear())));
   if (!a || a < 2000 || a > 2100) return;
   if (S.list.some(e => e.anio === a)) { toast('Esa encuesta ya existe.', 1); return; }
   const base = S.E ? enc() : { w1: DEF.w1, w2: DEF.w2, meta: DEF.meta };
-  const r = await guardar(() => api('/api/encuesta/' + a, { method: 'PUT', body: { titulo: 'Encuesta de satisfacción ' + a, enviadas: 0, meta: base.meta, w1: base.w1, w2: base.w2 } }), `Encuesta ${a} creada con los mismos pesos y meta.`);
+  const r = await guardar(() => api('/api/encuesta/' + a, { method: 'PUT', body: { titulo: `Encuesta ${a}`, enviadas: 0, meta: base.meta, w1: base.w1, w2: base.w2 } }), `Encuesta ${a} creada con los mismos pesos y meta.`);
   if (r) { S.anio = a; S.tab = 'res'; await recargar(); }
 }
 async function init() {

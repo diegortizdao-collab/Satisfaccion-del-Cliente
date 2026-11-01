@@ -10,6 +10,12 @@ API: [Satisfaccion-del-Cliente-API](https://github.com/diegortizdao-collab/Satis
 4. **Voz del cliente:** prioriza los temas, registra el cierre de ciclo con los clientes bajo la meta, clasifica los comentarios y arma las acciones. «Llevar a la RxD» crea la decisión propuesta en la revisión por la dirección (exige responsable).
 5. **Publicar en la RxD:** acción explícita. Elegís la revisión y se escriben el índice de la 1.ª etapa y el nivel de respuesta; si ya había un valor, pide confirmación y queda en el historial de la RxD.
 
+## Regla de años
+La encuesta «2025» mide el período 2025, se hace a principios de 2026 y entra en la RxD 2026. La de 2026 se hará en 2027 y entrará en la RxD 2027. Por eso «Publicar» propone por defecto la RxD del año de la encuesta + 1, y el Histórico compara cada encuesta con lo que figura en la RxD del año siguiente.
+
+## Duplicados
+Hay una respuesta por cliente y encuesta. Al cargar un CSV: las repetidas con las mismas notas se ignoran; las que vienen con notas distintas se muestran para que elijas mantener la cargada o reemplazarla. «Reemplazar todas» actualiza por cliente y quita solo las que no vienen en el archivo; nunca borra antes de insertar.
+
 ## Cálculo
 `índice = Σ(nota × peso) ÷ (escala × Σ pesos)`, promedio de los clientes. Pesos y meta se guardan con cada encuesta (pestaña Ponderación).
 1.ª etapa (escala 5): calidad ×2, cumplimiento ×2, asesoramiento ×1, comunicación ×1. 2.ª etapa (escala 3, frente a la competencia): calidad ×2, cumplimiento ×2, flexibilidad ×1,5, asesoramiento ×1, comunicación ×1.
